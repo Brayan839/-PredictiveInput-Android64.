@@ -219,6 +219,14 @@ jobs:
               raise SystemExit("Expected relevant-input decision block exactly once")
           s = s.replace(old, new, 1)
 
+          # Avoid rejecting a live player because Android beta state flags
+          # report dead/locked/disabled incorrectly.
+          old = 'if (p && !p->m_isDead && !p->m_isLocked && !p->m_controlsDisabled) players.push_back(p);'
+          new = 'if (p) players.push_back(p);'
+          if s.count(old) != 1:
+              raise SystemExit("Expected affected-player filter exactly once")
+          s = s.replace(old, new, 1)
+
           p.write_text(s)
           PY
 
