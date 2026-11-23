@@ -355,6 +355,7 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          nl = chr(10)
           p = Path("src/Predictor.cpp")
           s = p.read_text()
 
@@ -368,8 +369,8 @@ jobs:
               raise SystemExit("Expected one Ship/Swing exclusion")
           s = s.replace(old, "return true;", 1)
 
-          old = "                case Gamemode::Wave:\\n                    ticks = down ? g_rhythm.held : g_rhythm.released;"
-          new = "                case Gamemode::Wave:\\n                case Gamemode::Ship:\\n                case Gamemode::Swing:\\n                    ticks = down ? g_rhythm.held : g_rhythm.released;"
+          old = "                case Gamemode::Wave:" + nl + "                    ticks = down ? g_rhythm.held : g_rhythm.released;"
+          new = "                case Gamemode::Wave:" + nl + "                case Gamemode::Ship:" + nl + "                case Gamemode::Swing:" + nl + "                    ticks = down ? g_rhythm.held : g_rhythm.released;"
           if s.count(old) != 1:
               raise SystemExit("Expected one Wave rhythm branch")
           s = s.replace(old, new, 1)
@@ -377,7 +378,7 @@ jobs:
           old = "                case Gamemode::Wave: {"
           if s.count(old) != 1:
               raise SystemExit("Expected one Wave request branch")
-          s = s.replace(old, "                case Gamemode::Wave:\\n                case Gamemode::Ship:\\n                case Gamemode::Swing: {", 1)
+          s = s.replace(old, "                case Gamemode::Wave:" + nl + "                case Gamemode::Ship:" + nl + "                case Gamemode::Swing: {", 1)
 
           p.write_text(s)
           PY
