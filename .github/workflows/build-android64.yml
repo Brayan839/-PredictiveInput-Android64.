@@ -19,7 +19,7 @@ jobs:
       - name: Set Geode v6 beta 2 and Android GD target
         working-directory: mod-src
         run: |
-          python3 -c 'import json; p="mod.json"; d=json.load(open(p)); d["geode"]="6.0.0-beta.2"; d["gd"]={"android":"2.2091"}; d["version"]="1.0.3-beta.2"; json.dump(d,open(p,"w"),indent=2)'
+          python3 -c 'import json; p="mod.json"; d=json.load(open(p)); d["geode"]="6.0.0-beta.2"; d["gd"]={"android":"2.2091"}; d["version"]="v1.0.3-beta.2"; json.dump(d,open(p,"w"),indent=2)'
           python3 -c 'from pathlib import Path; p=Path("src/Hooks.cpp"); s=p.read_text(); old="constexpr uintptr_t kGameEventTriggered = 0x33ac80;"; nl=chr(10); new="#if defined(GEODE_IS_ANDROID)"+nl+"    constexpr uintptr_t kGameEventTriggered = 0x9ba44c;"+nl+"#else"+nl+"    constexpr uintptr_t kGameEventTriggered = 0x33ac80;"+nl+"#endif"; assert old in s, "Expected hook offset declaration not found"; p.write_text(s.replace(old,new,1))'
 
       - name: Adapt PlayerObject state for Android64
@@ -283,18 +283,11 @@ jobs:
           s = s.replace(old, new, 1)
 
           old = 'int fireTick = earliest;' + nl + '        if (!relevant && !queue.empty()) {'
-          new = (
-              'int fireTick = earliest;' + nl +
-              '        if (!relevant) {' + nl +
-              '            lastSave = fmt::format("not buffered: {}", players.empty() ? "no player" :' + nl +
-              '                gamemodeName(gamemodeOf(players.front())));' + nl +
-              '            refreshStatus();' + nl +
-              '        }' + nl +
-              '        if (!relevant && !queue.empty()) {'
-          )
           if s.count(old) != 1:
               raise SystemExit("Expected relevant-input decision block exactly once")
-          s = s.replace(old, new, 1)
+          # Non-hold releases are intentionally chained behind their press.
+          # Do not report them as "not buffered" because they are not predicted.
+          s = s.replace(old, old, 1)
 
           # Do not use Android PlayerObject state flags as an input-routing filter.
           old = 'if (p && !p->m_isDead && !p->m_isLocked && !p->m_controlsDisabled) players.push_back(p);'
