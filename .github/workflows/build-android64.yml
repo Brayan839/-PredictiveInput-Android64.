@@ -35,10 +35,10 @@ jobs:
               source = f.read()
           old = "constexpr uintptr_t kGameEventTriggered = 0x33ac80;"
           new = """#if defined(GEODE_IS_ANDROID)
-              constexpr uintptr_t kGameEventTriggered = 0x9ba44c;
-          #else
-              constexpr uintptr_t kGameEventTriggered = 0x33ac80;
-          #endif"""
+    constexpr uintptr_t kGameEventTriggered = 0x9ba44c;
+#else
+    constexpr uintptr_t kGameEventTriggered = 0x33ac80;
+#endif"""
           if old not in source:
               raise SystemExit("Expected hook offset declaration not found; refusing to patch")
           with open(p, "w", encoding="utf-8") as f:
