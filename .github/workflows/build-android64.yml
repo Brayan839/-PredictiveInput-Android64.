@@ -219,13 +219,38 @@ jobs:
               raise SystemExit("Expected relevant-input decision block exactly once")
           s = s.replace(old, new, 1)
 
-          # Avoid rejecting a live player because Android beta state flags
-          # report dead/locked/disabled incorrectly.
+          # Do not use Android PlayerObject state flags as an input-routing filter.
           old = 'if (p && !p->m_isDead && !p->m_isLocked && !p->m_controlsDisabled) players.push_back(p);'
           new = 'if (p) players.push_back(p);'
           if s.count(old) != 1:
               raise SystemExit("Expected affected-player filter exactly once")
           s = s.replace(old, new, 1)
+
+          # Match the game's two-player routing: in 2P mode choose the player
+          # selected by isPlayer1; otherwise normal inputs reach player 1 and
+          # also player 2 while dual mode is active.
+          old_route = (
+              '        if (!twoPlayer || isPlayer1) add(layer->m_player1);' + nl +
+              '        if (dual && (!twoPlayer || !isPlayer1)) add(layer->m_player2);'
+          )
+          new_route = (
+              '        if (twoPlayer) {' + nl +
+              '            auto* selected = isPlayer1 ? layer->m_player1 : layer->m_player2;' + nl +
+              '            if (selected) add(selected);' + nl +
+              '            else add(layer->m_player1);' + nl +
+              '        }' + nl +
+              '        else {' + nl +
+              '            add(layer->m_player1);' + nl +
+              '            if (dual) add(layer->m_player2);' + nl +
+              '        }' + nl +
+              '        if (players.empty()) {' + nl +
+              '            log::warn("Predictive Input: empty player selection (2P={}, dual={}, inputP1={}, p1={}, p2={})",' + nl +
+              '                twoPlayer, dual, isPlayer1, layer->m_player1 != nullptr, layer->m_player2 != nullptr);' + nl +
+              '        }'
+          )
+          if s.count(old_route) != 1:
+              raise SystemExit("Expected affected-player routing block exactly once")
+          s = s.replace(old_route, new_route, 1)
 
           p.write_text(s)
           PY
