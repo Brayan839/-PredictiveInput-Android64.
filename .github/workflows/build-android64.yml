@@ -84,7 +84,7 @@ jobs:
                   out.append(line)
           if found_ring != 1 or found_pad != 1:
               raise SystemExit(f"Unexpected generated fields: ring={found_ring}, pad={found_pad}")
-          p.write_text("\\n".join(out) + "\\n")
+          p.write_text("\n".join(out) + "\n")
 
           # Keep the generator's container allow-list current.
           p = Path("tools/gen-player-copy.mjs")
