@@ -9,52 +9,55 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout mod source
+      - name: Checkout Android build project
         uses: actions/checkout@v4
         with:
           repository: ZakME/GDPredictiveInputModGeode
           ref: main
           path: mod-src
 
-      - name: Checkout Geode SDK
-        uses: actions/checkout@v4
-        with:
-          repository: geode-sdk/geode
-          ref: v6.0.0-alpha.2
-          path: geode-sdk
-
-      - name: Set up Android NDK
-        uses: nttld/setup-ndk@v1
-        with:
-          ndk-version: r27c
-
-      - name: Install build tools
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ninja-build cmake
-
-      - name: Configure Android target
+      - name: Set Geode v6 and Android GD target
         working-directory: mod-src
-        env:
-          GEODE_SDK: ${{ github.workspace }}/geode-sdk
         run: |
-          cmake -S . -B build-android64 -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
-            -DANDROID_ABI=arm64-v8a \
-            -DANDROID_PLATFORM=android-24
+          python3 - <<'PY'
+          import json
+          p = "mod.json"
+          with open(p, encoding="utf-8") as f:
+              data = json.load(f)
+          data["geode"] = "v6.0.0-alpha.2"
+          data["gd"] = {"android": "2.2091"}
+          data["version"] = "v1.0.1-android64-ci"
+          with open(p, "w", encoding="utf-8") as f:
+              json.dump(data, f, indent=2)
+              f.write("\\n")
+          p = "src/Hooks.cpp"
+          with open(p, encoding="utf-8") as f:
+              source = f.read()
+          old = "constexpr uintptr_t kGameEventTriggered = 0x33ac80;"
+          new = """#if defined(GEODE_IS_ANDROID)
+              constexpr uintptr_t kGameEventTriggered = 0x9ba44c;
+          #else
+              constexpr uintptr_t kGameEventTriggered = 0x33ac80;
+          #endif"""
+          if old not in source:
+              raise SystemExit("Expected hook offset declaration not found; refusing to patch")
+          with open(p, "w", encoding="utf-8") as f:
+              f.write(source.replace(old, new, 1))
+          PY
 
-      - name: Build
-        working-directory: mod-src
-        env:
-          GEODE_SDK: ${{ github.workspace }}/geode-sdk
-        run: cmake --build build-android64 --parallel 2
+      - name: Build Geode mod for Android64
+        id: build
+        uses: geode-sdk/build-geode-mod@main
+        with:
+          sdk: v6.0.0-alpha.2
+          cli: latest
+          target: Android64
+          path: mod-src
+          build-config: Release
 
-      - name: Upload build output
+      - name: Upload .geode artifact
         uses: actions/upload-artifact@v4
         with:
           name: PredictiveInput-Android64
-          path: |
-            mod-src/build-android64/**/*.geode
-            mod-src/build-android64/**/*.so
+          path: ${{ steps.build.outputs.build-output }}/*.geode
           if-no-files-found: error
