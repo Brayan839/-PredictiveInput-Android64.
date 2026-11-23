@@ -137,8 +137,11 @@ jobs:
               raise SystemExit("Expected Android self-check call exactly once")
           s = s.replace(old, new, 1)
 
-          import re
-          pattern = r'        auto label = CCLabelBMFont::create\("", "chatFont\\.fnt"\);.*?        this->refreshStatus\(\);'
+          start = s.find('        auto label = CCLabelBMFont::create("", "chatFont.fnt");')
+          finish = s.find("        this->refreshStatus();", start)
+          if start < 0 or finish < 0:
+              raise SystemExit("Could not locate status label creation lines")
+          finish += len("        this->refreshStatus();")
           new = """        auto label = CCLabelBMFont::create("Input Buffer", "chatFont.fnt");
                   if (!label) label = CCLabelBMFont::create("Input Buffer", "bigFont.fnt");
                   if (label) {
@@ -155,10 +158,7 @@ jobs:
                   else {
                       log::error("Predictive Input: could not create status label (chatFont.fnt/bigFont.fnt)");
                   }"""
-          s, count = re.subn(pattern, new, s, count=1, flags=re.S)
-          if count != 1:
-              raise SystemExit("Could not locate status label block using whitespace-tolerant match")
-          
+          s = s[:start] + new + s[finish:]
           p.write_text(s)
           PY
 
