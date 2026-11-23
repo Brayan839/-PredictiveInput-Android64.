@@ -180,26 +180,18 @@ jobs:
               raise SystemExit("Expected replay guard exactly once")
           s = s.replace(old, new, 1)
 
-          old = """        if (button == 1 && !Simulator::get().active()) {
-                      g_inputThisTick = true;
-                      g_check.pending = false;
-                      // Learn the player's rhythm from when they actually clicked.
-                      if (!InputQueue::isFiring()) noteInput(down, queue.currentTick());
-                  }"""
-          new = """        if (button == 1 && !Simulator::get().active()) {
-                      g_inputThisTick = true;
-                      g_check.pending = false;
-                      // Learn rhythm and expose that the live touch reached this hook.
-                      if (!InputQueue::isFiring()) {
-                          noteInput(down, queue.currentTick());
-                          lastSave = down ? "input received" : "release received";
-                          refreshStatus();
-                          log::debug("input hook received {} at tick {}",
-                              down ? "press" : "release", queue.currentTick());
-                      }
-                  }"""
+          old = "if (!InputQueue::isFiring()) noteInput(down, queue.currentTick());"
+          new = (
+              "if (!InputQueue::isFiring()) {\\n"
+              "                noteInput(down, queue.currentTick());\\n"
+              "                lastSave = down ? \\"input received\\" : \\"release received\\";\\n"
+              "                refreshStatus();\\n"
+              "                log::debug(\\"input hook received {} at tick {}\\",\\n"
+              "                    down ? \\"press\\" : \\"release\\", queue.currentTick());\\n"
+              "            }"
+          )
           if s.count(old) != 1:
-              raise SystemExit("Expected live input tracking block exactly once")
+              raise SystemExit("Expected live input tracking call exactly once")
           s = s.replace(old, new, 1)
 
           old = """                log::debug("{} checked in {} us: no delay", down ? "press" : "release", decision.micros);"""
@@ -211,15 +203,16 @@ jobs:
               raise SystemExit("Expected predictor no-delay log exactly once")
           s = s.replace(old, new, 1)
 
-          old = """        int fireTick = earliest;
-                  if (!relevant && !queue.empty()) {"""
-          new = """        int fireTick = earliest;
-                  if (!relevant) {
-                      lastSave = fmt::format("not buffered: {}", players.empty() ? "no player" :
-                          gamemodeName(gamemodeOf(players.front())));
-                      refreshStatus();
-                  }
-                  if (!relevant && !queue.empty()) {"""
+          old = "int fireTick = earliest;\\n        if (!relevant && !queue.empty()) {"
+          new = (
+              "int fireTick = earliest;\\n"
+              "        if (!relevant) {\\n"
+              "            lastSave = fmt::format(\\"not buffered: {}\\", players.empty() ? \\"no player\\" :\\n"
+              "                gamemodeName(gamemodeOf(players.front())));\\n"
+              "            refreshStatus();\\n"
+              "        }\\n"
+              "        if (!relevant && !queue.empty()) {"
+          )
           if s.count(old) != 1:
               raise SystemExit("Expected relevant-input decision block exactly once")
           s = s.replace(old, new, 1)
