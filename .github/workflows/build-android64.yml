@@ -381,6 +381,14 @@ jobs:
           s = s.replace(old, "                case Gamemode::Wave:" + nl + "                case Gamemode::Ship:" + nl + "                case Gamemode::Swing: {", 1)
 
           p.write_text(s)
+
+          # Keep the settings UI accurate for all supported hold modes.
+          meta = Path("mod.json")
+          m = meta.read_text()
+          m = m.replace("Buffer Releases (Wave)", "Buffer Releases (Wave, Ship, Swing)")
+          m = m.replace("in wave, where letting go", "in wave, ship and swing, where releasing")
+          m = m.replace("Most ticks to look ahead after an input in wave and UFO.", "Most ticks to look ahead after an input in wave, ship, swing and UFO.")
+          meta.write_text(m)
           PY
 
       - name: Build Geode mod for Android64
