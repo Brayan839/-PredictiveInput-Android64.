@@ -79,11 +79,8 @@ jobs:
                   raise SystemExit(f"Expected exactly one stale binding assertion: {assertion}")
               s = s.replace(assertion, "// Android64 runtime offset is read directly in Hooks.cpp.\\n", 1)
 
-          stale_dual_assertion = (
-              "static_assert(offsetof(GJBaseGameLayer, m_gameState) + "
-              "offsetof(GJGameState, m_isDualMode) == 0x422,\\n"
-              '    "GJGameState::m_isDualMode is not at GJBaseGameLayer+0x422");'
-          )
+          stale_dual_assertion = """static_assert(offsetof(GJBaseGameLayer, m_gameState) + offsetof(GJGameState, m_isDualMode) == 0x422,
+              "GJGameState::m_isDualMode is not at GJBaseGameLayer+0x422");"""
           if s.count(stale_dual_assertion) != 1:
               raise SystemExit("Expected outdated dual-mode binding assertion exactly once")
           s = s.replace(stale_dual_assertion,
