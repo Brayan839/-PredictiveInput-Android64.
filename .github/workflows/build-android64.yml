@@ -358,50 +358,26 @@ jobs:
           p = Path("src/Predictor.cpp")
           s = p.read_text()
 
-          old = """    bool isHoldMode(Gamemode mode) {
-          return mode == Gamemode::Wave;
-          }"""
-          new = """    bool isHoldMode(Gamemode mode) {
-          return mode == Gamemode::Wave || mode == Gamemode::Ship || mode == Gamemode::Swing;
-          }"""
+          old = "return mode == Gamemode::Wave;"
           if s.count(old) != 1:
-              raise SystemExit("Expected isHoldMode definition exactly once")
+              raise SystemExit("Expected one Wave hold-mode return")
+          s = s.replace(old, "return mode == Gamemode::Wave || mode == Gamemode::Ship || mode == Gamemode::Swing;", 1)
+
+          old = "return mode != Gamemode::Ship && mode != Gamemode::Swing;"
+          if s.count(old) != 1:
+              raise SystemExit("Expected one Ship/Swing exclusion")
+          s = s.replace(old, "return true;", 1)
+
+          old = "                case Gamemode::Wave:\\n                    ticks = down ? g_rhythm.held : g_rhythm.released;"
+          new = "                case Gamemode::Wave:\\n                case Gamemode::Ship:\\n                case Gamemode::Swing:\\n                    ticks = down ? g_rhythm.held : g_rhythm.released;"
+          if s.count(old) != 1:
+              raise SystemExit("Expected one Wave rhythm branch")
           s = s.replace(old, new, 1)
 
-          old = """    bool isBuffered(Gamemode mode) {
-          return mode != Gamemode::Ship && mode != Gamemode::Swing;
-          }"""
-          new = """    bool isBuffered(Gamemode mode) {
-          // All eight game modes use the predictive input queue.
-          return true;
-          }"""
+          old = "                case Gamemode::Wave: {"
           if s.count(old) != 1:
-              raise SystemExit("Expected isBuffered definition exactly once")
-          s = s.replace(old, new, 1)
-
-          old = """                case Gamemode::Wave:
-                    ticks = down ? g_rhythm.held : g_rhythm.released;
-                    break;"""
-          new = """                case Gamemode::Wave:
-                case Gamemode::Ship:
-                case Gamemode::Swing:
-                    ticks = down ? g_rhythm.held : g_rhythm.released;
-                    break;"""
-          if s.count(old) != 1:
-              raise SystemExit("Expected rhythm mode switch exactly once")
-          s = s.replace(old, new, 1)
-
-          old = """                case Gamemode::Wave: {
-                    // The player flips back at their usual rhythm; a death
-                    // caused by this input shows up before or just after that."""
-          new = """                case Gamemode::Wave:
-                case Gamemode::Ship:
-                case Gamemode::Swing: {
-                    // Hold modes are evaluated with the player's learned
-                    // press/release rhythm, including Ship and Swing."""
-          if s.count(old) != 1:
-              raise SystemExit("Expected hold-mode request branch exactly once")
-          s = s.replace(old, new, 1)
+              raise SystemExit("Expected one Wave request branch")
+          s = s.replace(old, "                case Gamemode::Wave:\\n                case Gamemode::Ship:\\n                case Gamemode::Swing: {", 1)
 
           p.write_text(s)
           PY
