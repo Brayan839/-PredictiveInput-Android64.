@@ -57,6 +57,7 @@ jobs:
               "m_touchedRings": ("0xa48", "0x9f8"),
               "m_position": ("0xa98", "0xa30"),
               "m_totalTime": ("0xaa8", "0xa40"),
+              "m_platformerXVelocity": ("0xb00", "0xa98"),
               "m_holdingButtons": ("0xbc0", "0xb60"),
               "m_actionManager": ("0xc38", "0xbd8"),
           }
@@ -66,6 +67,29 @@ jobs:
               if s.count(old_line) != 1:
                   raise SystemExit(f"Expected exactly one assertion: {old_line}")
               s = s.replace(old_line, new_line, 1)
+          # Remaining type sizes and GameLayer offsets from the Android64 2.2091 ABI.
+          layout_replacements = {
+              'static_assert(sizeof(PlayerObject) == 0xc50, "PlayerObject size changed");':
+                  'static_assert(sizeof(PlayerObject) == 0xbf0, "PlayerObject size changed");',
+              "PIB_EXPECT_OFFSET(GJBaseGameLayer, m_player1, 0xdb8);":
+                  "PIB_EXPECT_OFFSET(GJBaseGameLayer, m_player1, 0xcb8);",
+              "PIB_EXPECT_OFFSET(GJBaseGameLayer, m_player2, 0xdc0);":
+                  "PIB_EXPECT_OFFSET(GJBaseGameLayer, m_player2, 0xcc0);",
+              "PIB_EXPECT_OFFSET(GJBaseGameLayer, m_levelSettings, 0xdc8);":
+                  "PIB_EXPECT_OFFSET(GJBaseGameLayer, m_levelSettings, 0xcc8);",
+              "PIB_EXPECT_OFFSET(GJBaseGameLayer, m_isPlatformer, 0x317e);":
+                  "PIB_EXPECT_OFFSET(GJBaseGameLayer, m_isPlatformer, 0x2fce);",
+              "PIB_EXPECT_OFFSET(GJBaseGameLayer, m_useReplay, 0x3280);":
+                  "PIB_EXPECT_OFFSET(GJBaseGameLayer, m_useReplay, 0x30a0);",
+              "PIB_EXPECT_OFFSET(GJBaseGameLayer, m_clickBetweenSteps, 0x38f1);":
+                  "PIB_EXPECT_OFFSET(GJBaseGameLayer, m_clickBetweenSteps, 0x3679);",
+              "offsetof(GJGameState, m_isDualMode) == 0x422,":
+                  "offsetof(GJGameState, m_isDualMode) == 0x3f2,",
+          }
+          for old, new in layout_replacements.items():
+              if s.count(old) != 1:
+                  raise SystemExit(f"Expected exactly one layout expression: {old}")
+              s = s.replace(old, new, 1)
           p.write_text(s)
 
           # Current bindings use m_usedRings instead of the old m_ringRelatedSet.
