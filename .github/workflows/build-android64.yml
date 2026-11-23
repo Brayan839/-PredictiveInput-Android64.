@@ -19,31 +19,8 @@ jobs:
       - name: Set Geode v6 and Android GD target
         working-directory: mod-src
         run: |
-          python3 - <<'PY'
-          import json
-          p = "mod.json"
-          with open(p, encoding="utf-8") as f:
-              data = json.load(f)
-          data["geode"] = "v6.0.0-alpha.2"
-          data["gd"] = {"android": "2.2091"}
-          data["version"] = "v1.0.1-android64-ci"
-          with open(p, "w", encoding="utf-8") as f:
-              json.dump(data, f, indent=2)
-              f.write("\\n")
-          p = "src/Hooks.cpp"
-          with open(p, encoding="utf-8") as f:
-              source = f.read()
-          old = "constexpr uintptr_t kGameEventTriggered = 0x33ac80;"
-          new = """#if defined(GEODE_IS_ANDROID)
-    constexpr uintptr_t kGameEventTriggered = 0x9ba44c;
-#else
-    constexpr uintptr_t kGameEventTriggered = 0x33ac80;
-#endif"""
-          if old not in source:
-              raise SystemExit("Expected hook offset declaration not found; refusing to patch")
-          with open(p, "w", encoding="utf-8") as f:
-              f.write(source.replace(old, new, 1))
-          PY
+          python3 -c 'import json; p="mod.json"; d=json.load(open(p)); d["geode"]="v6.0.0-alpha.2"; d["gd"]={"android":"2.2091"}; d["version"]="v1.0.1-android64-ci"; json.dump(d,open(p,"w"),indent=2)'
+          python3 -c 'from pathlib import Path; p=Path("src/Hooks.cpp"); s=p.read_text(); old="constexpr uintptr_t kGameEventTriggered = 0x33ac80;"; new="#if defined(GEODE_IS_ANDROID)\\n    constexpr uintptr_t kGameEventTriggered = 0x9ba44c;\\n#else\\n    constexpr uintptr_t kGameEventTriggered = 0x33ac80;\\n#endif"; assert old in s, "Expected hook offset declaration not found"; p.write_text(s.replace(old,new,1))'
 
       - name: Build Geode mod for Android64
         id: build
