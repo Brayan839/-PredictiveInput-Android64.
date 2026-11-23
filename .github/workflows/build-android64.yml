@@ -168,50 +168,52 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          nl = chr(10)
           p = Path("src/Hooks.cpp")
           s = p.read_text()
 
           # In a live PlayLayer, m_useReplay is the authoritative replay guard.
-          # Avoid rejecting ordinary touch input due to the secondary playback
-          # state field, which is not needed for this PlayLayer-only buffer.
-          old = "if (layer->m_useReplay || layer->m_playbackMode != PlaybackMode::Not) return false;"
-          new = "if (layer->m_useReplay) return false;"
+          old = 'if (layer->m_useReplay || layer->m_playbackMode != PlaybackMode::Not) return false;'
+          new = 'if (layer->m_useReplay) return false;'
           if s.count(old) != 1:
               raise SystemExit("Expected replay guard exactly once")
           s = s.replace(old, new, 1)
 
-          old = "if (!InputQueue::isFiring()) noteInput(down, queue.currentTick());"
+          # Mark real touch events as soon as they reach the input hook.
+          old = 'if (!InputQueue::isFiring()) noteInput(down, queue.currentTick());'
           new = (
-              "if (!InputQueue::isFiring()) {\\n"
-              "                noteInput(down, queue.currentTick());\\n"
-              "                lastSave = down ? \\"input received\\" : \\"release received\\";\\n"
-              "                refreshStatus();\\n"
-              "                log::debug(\\"input hook received {} at tick {}\\",\\n"
-              "                    down ? \\"press\\" : \\"release\\", queue.currentTick());\\n"
-              "            }"
+              'if (!InputQueue::isFiring()) {' + nl +
+              '                noteInput(down, queue.currentTick());' + nl +
+              '                lastSave = down ? "input received" : "release received";' + nl +
+              '                refreshStatus();' + nl +
+              '                log::debug("input hook received {} at tick {}",' + nl +
+              '                    down ? "press" : "release", queue.currentTick());' + nl +
+              '            }'
           )
           if s.count(old) != 1:
               raise SystemExit("Expected live input tracking call exactly once")
           s = s.replace(old, new, 1)
 
-          old = """                log::debug("{} checked in {} us: no delay", down ? "press" : "release", decision.micros);"""
-          new = """                lastSave = fmt::format("checked: no safe delay ({} us)", decision.micros);
-                          refreshStatus();
-                          log::info("{} checked in {} us: no safe delay",
-                              down ? "press" : "release", decision.micros);"""
+          old = 'log::debug("{} checked in {} us: no delay", down ? "press" : "release", decision.micros);'
+          new = (
+              'lastSave = fmt::format("checked: no safe delay ({} us)", decision.micros);' + nl +
+              '                refreshStatus();' + nl +
+              '                log::info("{} checked in {} us: no safe delay",' + nl +
+              '                    down ? "press" : "release", decision.micros);'
+          )
           if s.count(old) != 1:
               raise SystemExit("Expected predictor no-delay log exactly once")
           s = s.replace(old, new, 1)
 
-          old = "int fireTick = earliest;\\n        if (!relevant && !queue.empty()) {"
+          old = 'int fireTick = earliest;' + nl + '        if (!relevant && !queue.empty()) {'
           new = (
-              "int fireTick = earliest;\\n"
-              "        if (!relevant) {\\n"
-              "            lastSave = fmt::format(\\"not buffered: {}\\", players.empty() ? \\"no player\\" :\\n"
-              "                gamemodeName(gamemodeOf(players.front())));\\n"
-              "            refreshStatus();\\n"
-              "        }\\n"
-              "        if (!relevant && !queue.empty()) {"
+              'int fireTick = earliest;' + nl +
+              '        if (!relevant) {' + nl +
+              '            lastSave = fmt::format("not buffered: {}", players.empty() ? "no player" :' + nl +
+              '                gamemodeName(gamemodeOf(players.front())));' + nl +
+              '            refreshStatus();' + nl +
+              '        }' + nl +
+              '        if (!relevant && !queue.empty()) {'
           )
           if s.count(old) != 1:
               raise SystemExit("Expected relevant-input decision block exactly once")
