@@ -120,6 +120,54 @@ jobs:
           p.write_text(s.replace(old, new, 1))
           PY
 
+      - name: Stabilize Android self-check and status label
+        working-directory: mod-src
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("src/Hooks.cpp")
+          s = p.read_text()
+
+          old = """                startSelfCheck(play, static_cast<PIBPlayLayer*>(play)->simPlayer(), tick);"""
+          new = """#if !defined(GEODE_IS_ANDROID)
+                          startSelfCheck(play, static_cast<PIBPlayLayer*>(play)->simPlayer(), tick);
+          #endif"""
+          if s.count(old) != 1:
+              raise SystemExit("Expected Android self-check call exactly once")
+          s = s.replace(old, new, 1)
+
+          old = """        auto label = CCLabelBMFont::create("", "chatFont.fnt");
+          label->setAnchorPoint({ 0.f, 1.f });
+          label->setScale(0.5f);
+          label->setOpacity(180);
+          label->setPosition({ 4.f, CCDirector::get()->getWinSize().height - 14.f });
+          label->setZOrder(1000);
+          this->addChild(label);
+          m_fields->status = label;
+          this->refreshStatus();"""
+          new = """        auto label = CCLabelBMFont::create("Input Buffer", "chatFont.fnt");
+          if (!label) label = CCLabelBMFont::create("Input Buffer", "bigFont.fnt");
+          if (label) {
+              auto winSize = CCDirector::get()->getWinSize();
+              label->setAnchorPoint({ 0.f, 1.f });
+              label->setScale(0.5f);
+              label->setOpacity(220);
+              label->setPosition({ 8.f, winSize.height - 24.f });
+              label->setZOrder(100000);
+              this->addChild(label, 100000);
+              m_fields->status = label;
+              this->refreshStatus();
+          }
+          else {
+              log::error("Predictive Input: could not create status label (chatFont.fnt/bigFont.fnt)");
+          }"""
+          if s.count(old) != 1:
+              raise SystemExit("Expected status-label creation block exactly once")
+          s = s.replace(old, new, 1)
+          p.write_text(s)
+          PY
+
       - name: Build Geode mod for Android64
         id: build
         uses: geode-sdk/build-geode-mod@main
