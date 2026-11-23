@@ -28,7 +28,6 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          import re
 
           # Offsets verified against the supplied Geometry Dash 2.2091 Android64
           # libcocos2dcpp.so (Build ID 93dbe2d3bd6a946d6fd2a73a4e5f82293e5a21c3).
@@ -62,34 +61,38 @@ jobs:
               "m_actionManager": ("0xc38", "0xbd8"),
           }
           for member, (old, new) in offsets.items():
-              pattern = rf"(PIB_EXPECT_OFFSET\\(PlayerObject, {member}, ){re.escape(old)}(\\);)"
-              s, n = re.subn(pattern, rf"\\g<1>{new}\\g<2>", s)
-              if n != 1:
-                  raise SystemExit(f"Expected exactly one layout assertion for {member} at {old}; got {n}")
+              old_line = f"PIB_EXPECT_OFFSET(PlayerObject, {member}, {old});"
+              new_line = f"PIB_EXPECT_OFFSET(PlayerObject, {member}, {new});"
+              if s.count(old_line) != 1:
+                  raise SystemExit(f"Expected exactly one assertion: {old_line}")
+              s = s.replace(old_line, new_line, 1)
           p.write_text(s)
 
-          # The current bindings replaced these old names: m_ringRelatedSet is
-          # now m_usedRings, while m_jumpPadRelated has no equivalent field.
+          # Current bindings use m_usedRings instead of the old m_ringRelatedSet.
+          # m_jumpPadRelated was removed from 2.2091 bindings and is not copied.
           p = Path("src/generated/PlayerStateCopy.inc")
-          s = p.read_text()
-          old = "dst->m_ringRelatedSet = src->m_ringRelatedSet;"
-          new = "dst->m_usedRings = src->m_usedRings;"
-          if s.count(old) != 1:
-              raise SystemExit("Expected old ring-set assignment exactly once")
-          s = s.replace(old, new, 1)
-          old = "dst->m_jumpPadRelated = src->m_jumpPadRelated;\\n"
-          if s.count(old) != 1:
-              raise SystemExit("Expected obsolete jump-pad assignment exactly once")
-          s = s.replace(old, "", 1)
-          p.write_text(s)
+          lines = p.read_text().splitlines()
+          out = []
+          found_ring = found_pad = 0
+          for line in lines:
+              if line.strip() == "dst->m_ringRelatedSet = src->m_ringRelatedSet;":
+                  out.append("dst->m_usedRings = src->m_usedRings;")
+                  found_ring += 1
+              elif line.strip() == "dst->m_jumpPadRelated = src->m_jumpPadRelated;":
+                  found_pad += 1
+              else:
+                  out.append(line)
+          if found_ring != 1 or found_pad != 1:
+              raise SystemExit(f"Unexpected generated fields: ring={found_ring}, pad={found_pad}")
+          p.write_text("\\n".join(out) + "\\n")
 
-          # Keep the generator consistent with the current 2.2091 names.
+          # Keep the generator's container allow-list current.
           p = Path("tools/gen-player-copy.mjs")
           s = p.read_text()
-          old = '    "m_ringRelatedSet", "m_touchedRings", "m_jumpPadRelated", "m_holdingButtons",'
-          new = '    "m_usedRings", "m_touchedRings", "m_holdingButtons",'
-          if old not in s:
-              raise SystemExit("Expected container list in generator was not found")
+          old = '"m_ringRelatedSet", "m_touchedRings", "m_jumpPadRelated", "m_holdingButtons"'
+          new = '"m_usedRings", "m_touchedRings", "m_holdingButtons"'
+          if s.count(old) != 1:
+              raise SystemExit("Expected container allow-list was not found")
           p.write_text(s.replace(old, new, 1))
           PY
 
