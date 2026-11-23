@@ -349,6 +349,63 @@ jobs:
           p.write_text(s)
           PY
 
+      - name: Enable prediction for Ship and Swing
+        working-directory: mod-src
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("src/Predictor.cpp")
+          s = p.read_text()
+
+          old = """    bool isHoldMode(Gamemode mode) {
+          return mode == Gamemode::Wave;
+          }"""
+          new = """    bool isHoldMode(Gamemode mode) {
+          return mode == Gamemode::Wave || mode == Gamemode::Ship || mode == Gamemode::Swing;
+          }"""
+          if s.count(old) != 1:
+              raise SystemExit("Expected isHoldMode definition exactly once")
+          s = s.replace(old, new, 1)
+
+          old = """    bool isBuffered(Gamemode mode) {
+          return mode != Gamemode::Ship && mode != Gamemode::Swing;
+          }"""
+          new = """    bool isBuffered(Gamemode mode) {
+          // All eight game modes use the predictive input queue.
+          return true;
+          }"""
+          if s.count(old) != 1:
+              raise SystemExit("Expected isBuffered definition exactly once")
+          s = s.replace(old, new, 1)
+
+          old = """                case Gamemode::Wave:
+                    ticks = down ? g_rhythm.held : g_rhythm.released;
+                    break;"""
+          new = """                case Gamemode::Wave:
+                case Gamemode::Ship:
+                case Gamemode::Swing:
+                    ticks = down ? g_rhythm.held : g_rhythm.released;
+                    break;"""
+          if s.count(old) != 1:
+              raise SystemExit("Expected rhythm mode switch exactly once")
+          s = s.replace(old, new, 1)
+
+          old = """                case Gamemode::Wave: {
+                    // The player flips back at their usual rhythm; a death
+                    // caused by this input shows up before or just after that."""
+          new = """                case Gamemode::Wave:
+                case Gamemode::Ship:
+                case Gamemode::Swing: {
+                    // Hold modes are evaluated with the player's learned
+                    // press/release rhythm, including Ship and Swing."""
+          if s.count(old) != 1:
+              raise SystemExit("Expected hold-mode request branch exactly once")
+          s = s.replace(old, new, 1)
+
+          p.write_text(s)
+          PY
+
       - name: Build Geode mod for Android64
         id: build
         uses: geode-sdk/build-geode-mod@main
