@@ -162,6 +162,71 @@ jobs:
           p.write_text(s)
           PY
 
+      - name: Fix live input interception and expose predictor decisions
+        working-directory: mod-src
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("src/Hooks.cpp")
+          s = p.read_text()
+
+          # In a live PlayLayer, m_useReplay is the authoritative replay guard.
+          # Avoid rejecting ordinary touch input due to the secondary playback
+          # state field, which is not needed for this PlayLayer-only buffer.
+          old = "if (layer->m_useReplay || layer->m_playbackMode != PlaybackMode::Not) return false;"
+          new = "if (layer->m_useReplay) return false;"
+          if s.count(old) != 1:
+              raise SystemExit("Expected replay guard exactly once")
+          s = s.replace(old, new, 1)
+
+          old = """        if (button == 1 && !Simulator::get().active()) {
+                      g_inputThisTick = true;
+                      g_check.pending = false;
+                      // Learn the player's rhythm from when they actually clicked.
+                      if (!InputQueue::isFiring()) noteInput(down, queue.currentTick());
+                  }"""
+          new = """        if (button == 1 && !Simulator::get().active()) {
+                      g_inputThisTick = true;
+                      g_check.pending = false;
+                      // Learn rhythm and expose that the live touch reached this hook.
+                      if (!InputQueue::isFiring()) {
+                          noteInput(down, queue.currentTick());
+                          lastSave = down ? "input received" : "release received";
+                          refreshStatus();
+                          log::debug("input hook received {} at tick {}",
+                              down ? "press" : "release", queue.currentTick());
+                      }
+                  }"""
+          if s.count(old) != 1:
+              raise SystemExit("Expected live input tracking block exactly once")
+          s = s.replace(old, new, 1)
+
+          old = """                log::debug("{} checked in {} us: no delay", down ? "press" : "release", decision.micros);"""
+          new = """                lastSave = fmt::format("checked: no safe delay ({} us)", decision.micros);
+                          refreshStatus();
+                          log::info("{} checked in {} us: no safe delay",
+                              down ? "press" : "release", decision.micros);"""
+          if s.count(old) != 1:
+              raise SystemExit("Expected predictor no-delay log exactly once")
+          s = s.replace(old, new, 1)
+
+          old = """        int fireTick = earliest;
+                  if (!relevant && !queue.empty()) {"""
+          new = """        int fireTick = earliest;
+                  if (!relevant) {
+                      lastSave = fmt::format("not buffered: {}", players.empty() ? "no player" :
+                          gamemodeName(gamemodeOf(players.front())));
+                      refreshStatus();
+                  }
+                  if (!relevant && !queue.empty()) {"""
+          if s.count(old) != 1:
+              raise SystemExit("Expected relevant-input decision block exactly once")
+          s = s.replace(old, new, 1)
+
+          p.write_text(s)
+          PY
+
       - name: Build Geode mod for Android64
         id: build
         uses: geode-sdk/build-geode-mod@main
