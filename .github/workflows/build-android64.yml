@@ -137,34 +137,28 @@ jobs:
               raise SystemExit("Expected Android self-check call exactly once")
           s = s.replace(old, new, 1)
 
-          old = """        auto label = CCLabelBMFont::create("", "chatFont.fnt");
-          label->setAnchorPoint({ 0.f, 1.f });
-          label->setScale(0.5f);
-          label->setOpacity(180);
-          label->setPosition({ 4.f, CCDirector::get()->getWinSize().height - 14.f });
-          label->setZOrder(1000);
-          this->addChild(label);
-          m_fields->status = label;
-          this->refreshStatus();"""
+          import re
+          pattern = r'        auto label = CCLabelBMFont::create\("", "chatFont\\.fnt"\);.*?        this->refreshStatus\(\);'
           new = """        auto label = CCLabelBMFont::create("Input Buffer", "chatFont.fnt");
-          if (!label) label = CCLabelBMFont::create("Input Buffer", "bigFont.fnt");
-          if (label) {
-              auto winSize = CCDirector::get()->getWinSize();
-              label->setAnchorPoint({ 0.f, 1.f });
-              label->setScale(0.5f);
-              label->setOpacity(220);
-              label->setPosition({ 8.f, winSize.height - 24.f });
-              label->setZOrder(100000);
-              this->addChild(label, 100000);
-              m_fields->status = label;
-              this->refreshStatus();
-          }
-          else {
-              log::error("Predictive Input: could not create status label (chatFont.fnt/bigFont.fnt)");
-          }"""
-          if s.count(old) != 1:
-              raise SystemExit("Expected status-label creation block exactly once")
-          s = s.replace(old, new, 1)
+                  if (!label) label = CCLabelBMFont::create("Input Buffer", "bigFont.fnt");
+                  if (label) {
+                      auto winSize = CCDirector::get()->getWinSize();
+                      label->setAnchorPoint({ 0.f, 1.f });
+                      label->setScale(0.5f);
+                      label->setOpacity(220);
+                      label->setPosition({ 8.f, winSize.height - 24.f });
+                      label->setZOrder(100000);
+                      this->addChild(label, 100000);
+                      m_fields->status = label;
+                      this->refreshStatus();
+                  }
+                  else {
+                      log::error("Predictive Input: could not create status label (chatFont.fnt/bigFont.fnt)");
+                  }"""
+          s, count = re.subn(pattern, new, s, count=1, flags=re.S)
+          if count != 1:
+              raise SystemExit("Could not locate status label block using whitespace-tolerant match")
+          
           p.write_text(s)
           PY
 
