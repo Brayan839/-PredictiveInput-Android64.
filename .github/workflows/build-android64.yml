@@ -69,8 +69,6 @@ jobs:
               s = s.replace(old_line, new_line, 1)
           # These Geode binding offsets are wrong for the Android64 2.2091 runtime.
           # Hooks.cpp reads the actual fields at 0xCE0, 0xCE8, 0xCF0 and 0x3F2.
-          import re
-
           stale_assertions = [
               "PIB_EXPECT_OFFSET(GJBaseGameLayer, m_player1, 0xdb8);",
               "PIB_EXPECT_OFFSET(GJBaseGameLayer, m_player2, 0xdc0);",
@@ -81,11 +79,14 @@ jobs:
                   raise SystemExit(f"Expected exactly one stale binding assertion: {assertion}")
               s = s.replace(assertion, "// Android64 runtime offset is read directly in Hooks.cpp." + chr(10), 1)
 
-          stale_dual_pattern = r'static_assert\\(offsetof\\(GJBaseGameLayer, m_gameState\\) \\+ offsetof\\(GJGameState, m_isDualMode\\) == 0x422,\\s*"GJGameState::m_isDualMode is not at GJBaseGameLayer\\+0x422"\\);'
-          s, count = re.subn(stale_dual_pattern,
-              "// Android64 m_isDualMode is read at GJBaseGameLayer + 0x3F2 in Hooks.cpp.", s)
-          if count != 1:
-              raise SystemExit(f"Expected one outdated dual-mode assertion, found {count}")
+          stale_dual_start = s.find("static_assert(offsetof(GJBaseGameLayer, m_gameState)")
+          stale_dual_end = s.find(");", stale_dual_start)
+          if stale_dual_start < 0 or stale_dual_end < 0:
+              raise SystemExit("Could not locate outdated dual-mode offset assertion")
+          stale_dual = s[stale_dual_start:stale_dual_end + 2]
+          if "m_isDualMode" not in stale_dual or "0x422" not in stale_dual:
+              raise SystemExit("Unexpected dual-mode assertion contents")
+          s = s[:stale_dual_start] + "// Android64 m_isDualMode is read at GJBaseGameLayer + 0x3F2 in Hooks.cpp." + s[stale_dual_end + 2:]
 
           # Remaining type sizes and independently checked Android64 offsets.
           layout_replacements = {
