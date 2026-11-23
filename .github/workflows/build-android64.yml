@@ -67,24 +67,38 @@ jobs:
               if s.count(old_line) != 1:
                   raise SystemExit(f"Expected exactly one assertion: {old_line}")
               s = s.replace(old_line, new_line, 1)
-          # Remaining type sizes and GameLayer offsets from the Android64 2.2091 ABI.
+          # These Geode binding offsets are wrong for the Android64 2.2091 runtime.
+          # Hooks.cpp reads the actual fields at 0xCE0, 0xCE8, 0xCF0 and 0x3F2.
+          stale_assertions = [
+              "PIB_EXPECT_OFFSET(GJBaseGameLayer, m_player1, 0xdb8);",
+              "PIB_EXPECT_OFFSET(GJBaseGameLayer, m_player2, 0xdc0);",
+              "PIB_EXPECT_OFFSET(GJBaseGameLayer, m_levelSettings, 0xdc8);",
+          ]
+          for assertion in stale_assertions:
+              if s.count(assertion) != 1:
+                  raise SystemExit(f"Expected exactly one stale binding assertion: {assertion}")
+              s = s.replace(assertion, "// Android64 runtime offset is read directly in Hooks.cpp.\\n", 1)
+
+          stale_dual_assertion = (
+              "static_assert(offsetof(GJBaseGameLayer, m_gameState) + "
+              "offsetof(GJGameState, m_isDualMode) == 0x422,\\n"
+              '    "GJGameState::m_isDualMode is not at GJBaseGameLayer+0x422");'
+          )
+          if s.count(stale_dual_assertion) != 1:
+              raise SystemExit("Expected outdated dual-mode binding assertion exactly once")
+          s = s.replace(stale_dual_assertion,
+              "// Android64 m_isDualMode is read at GJBaseGameLayer + 0x3F2 in Hooks.cpp.\\n", 1)
+
+          # Remaining type sizes and independently checked Android64 offsets.
           layout_replacements = {
               'static_assert(sizeof(PlayerObject) == 0xc50, "PlayerObject size changed");':
                   'static_assert(sizeof(PlayerObject) == 0xbf0, "PlayerObject size changed");',
-              "PIB_EXPECT_OFFSET(GJBaseGameLayer, m_player1, 0xdb8);":
-                  "PIB_EXPECT_OFFSET(GJBaseGameLayer, m_player1, 0xcb8);",
-              "PIB_EXPECT_OFFSET(GJBaseGameLayer, m_player2, 0xdc0);":
-                  "PIB_EXPECT_OFFSET(GJBaseGameLayer, m_player2, 0xcc0);",
-              "PIB_EXPECT_OFFSET(GJBaseGameLayer, m_levelSettings, 0xdc8);":
-                  "PIB_EXPECT_OFFSET(GJBaseGameLayer, m_levelSettings, 0xcc8);",
               "PIB_EXPECT_OFFSET(GJBaseGameLayer, m_isPlatformer, 0x317e);":
                   "PIB_EXPECT_OFFSET(GJBaseGameLayer, m_isPlatformer, 0x2fce);",
               "PIB_EXPECT_OFFSET(GJBaseGameLayer, m_useReplay, 0x3280);":
                   "PIB_EXPECT_OFFSET(GJBaseGameLayer, m_useReplay, 0x30a0);",
               "PIB_EXPECT_OFFSET(GJBaseGameLayer, m_clickBetweenSteps, 0x38f1);":
                   "PIB_EXPECT_OFFSET(GJBaseGameLayer, m_clickBetweenSteps, 0x3679);",
-              "offsetof(GJGameState, m_isDualMode) == 0x422,":
-                  "offsetof(GJGameState, m_isDualMode) == 0x3f2,",
           }
           for old, new in layout_replacements.items():
               if s.count(old) != 1:
@@ -172,6 +186,70 @@ jobs:
           p = Path("src/Hooks.cpp")
           s = p.read_text()
 
+          old_include = '#include <cmath>'
+          new_include = '#include <cmath>' + nl + '#include <cstdint>'
+          if s.count(old_include) != 1:
+              raise SystemExit("Expected <cmath> include exactly once")
+          s = s.replace(old_include, new_include, 1)
+
+          # Geode's 2.2091 Android64 generated fields are displaced from the
+          # runtime layout. These offsets were verified from this device-build
+          # libcocos2dcpp.so (Build ID 93dbe2d3bd6a946d6fd2a73a4e5f82293e5a21c3):
+          # player1=0xCE0, player2=0xCE8, levelSettings=0xCF0, dual=0x3F2.
+          helper_marker = (
+              '    PlayLayer* currentPlayLayer() {' + nl +
+              '        return g_playLayer;' + nl +
+              '    }'
+          )
+          helper_block = helper_marker + nl + nl + (
+              '#if defined(GEODE_IS_ANDROID) && defined(__aarch64__)' + nl +
+              '    template <typename T>' + nl +
+              '    T* readAndroidLayerPointer(GJBaseGameLayer* layer, std::uintptr_t offset) {' + nl +
+              '        auto address = reinterpret_cast<std::uintptr_t>(layer) + offset;' + nl +
+              '        return *reinterpret_cast<T* const*>(address);' + nl +
+              '    }' + nl + nl +
+              '    PlayerObject* pibPlayer1(GJBaseGameLayer* layer) {' + nl +
+              '        return readAndroidLayerPointer<PlayerObject>(layer, 0xCE0);' + nl +
+              '    }' + nl +
+              '    PlayerObject* pibPlayer2(GJBaseGameLayer* layer) {' + nl +
+              '        return readAndroidLayerPointer<PlayerObject>(layer, 0xCE8);' + nl +
+              '    }' + nl +
+              '    LevelSettingsObject* pibLevelSettings(GJBaseGameLayer* layer) {' + nl +
+              '        return readAndroidLayerPointer<LevelSettingsObject>(layer, 0xCF0);' + nl +
+              '    }' + nl +
+              '    bool pibDualMode(GJBaseGameLayer* layer) {' + nl +
+              '        auto address = reinterpret_cast<std::uintptr_t>(layer) + 0x3F2;' + nl +
+              '        return *reinterpret_cast<std::uint8_t const*>(address) != 0;' + nl +
+              '    }' + nl +
+              '#else' + nl +
+              '    PlayerObject* pibPlayer1(GJBaseGameLayer* layer) { return layer->m_player1; }' + nl +
+              '    PlayerObject* pibPlayer2(GJBaseGameLayer* layer) { return layer->m_player2; }' + nl +
+              '    LevelSettingsObject* pibLevelSettings(GJBaseGameLayer* layer) { return layer->m_levelSettings; }' + nl +
+              '    bool pibDualMode(GJBaseGameLayer* layer) { return layer->m_gameState.m_isDualMode; }' + nl +
+              '#endif'
+          )
+          if s.count(helper_marker) != 1:
+              raise SystemExit("Could not find currentPlayLayer helper insertion point")
+          s = s.replace(helper_marker, helper_block, 1)
+
+          # Replace every affected use of the generated fields with verified
+          # runtime accessors on Android64.
+          field_replacements = {
+              'player == m_player1': 'player == pibPlayer1(this)',
+              'auto player = layer->m_player1;': 'auto player = pibPlayer1(layer);',
+              'auto player = play->m_player1;': 'auto player = pibPlayer1(play);',
+              'this == layer->m_player1': 'this == pibPlayer1(layer)',
+              'auto levelSettings = layer->m_levelSettings;': 'auto levelSettings = pibLevelSettings(layer);',
+              'bool twoPlayer = layer->m_levelSettings && layer->m_levelSettings->m_twoPlayerMode;':
+                  'auto* levelSettings = pibLevelSettings(layer);' + nl +
+                  '        bool twoPlayer = levelSettings && levelSettings->m_twoPlayerMode;',
+              'bool dual = layer->m_gameState.m_isDualMode;': 'bool dual = pibDualMode(layer);',
+          }
+          for old_field, new_field in field_replacements.items():
+              if s.count(old_field) != 1:
+                  raise SystemExit(f"Expected exactly one field access to replace: {old_field}")
+              s = s.replace(old_field, new_field, 1)
+
           # In a live PlayLayer, m_useReplay is the authoritative replay guard.
           old = 'if (layer->m_useReplay || layer->m_playbackMode != PlaybackMode::Not) return false;'
           new = 'if (layer->m_useReplay) return false;'
@@ -226,26 +304,43 @@ jobs:
               raise SystemExit("Expected affected-player filter exactly once")
           s = s.replace(old, new, 1)
 
-          # Match the game's two-player routing: in 2P mode choose the player
-          # selected by isPlayer1; otherwise normal inputs reach player 1 and
-          # also player 2 while dual mode is active.
+          # Use the verified Android field pointers and match vanilla routing:
+          # if not dual, the input belongs to player 1; if dual+2P, it targets
+          # the selected player; otherwise one input affects both dual players.
           old_route = (
+              '        auto* levelSettings = pibLevelSettings(layer);' + nl +
+              '        bool twoPlayer = levelSettings && levelSettings->m_twoPlayerMode;' + nl +
+              '        bool dual = pibDualMode(layer);' + nl +
+              '        auto add = [&](PlayerObject* p) {' + nl +
+              '            if (p) players.push_back(p);' + nl +
+              '        };' + nl +
               '        if (!twoPlayer || isPlayer1) add(layer->m_player1);' + nl +
               '        if (dual && (!twoPlayer || !isPlayer1)) add(layer->m_player2);'
           )
           new_route = (
-              '        if (twoPlayer) {' + nl +
-              '            auto* selected = isPlayer1 ? layer->m_player1 : layer->m_player2;' + nl +
+              '        auto* levelSettings = pibLevelSettings(layer);' + nl +
+              '        bool twoPlayer = levelSettings && levelSettings->m_twoPlayerMode;' + nl +
+              '        bool dual = pibDualMode(layer);' + nl +
+              '        auto* player1 = pibPlayer1(layer);' + nl +
+              '        auto* player2 = pibPlayer2(layer);' + nl +
+              '        auto add = [&](PlayerObject* p) {' + nl +
+              '            if (p) players.push_back(p);' + nl +
+              '        };' + nl +
+              '        if (!dual) {' + nl +
+              '            add(player1);' + nl +
+              '        }' + nl +
+              '        else if (twoPlayer) {' + nl +
+              '            auto* selected = isPlayer1 ? player1 : player2;' + nl +
               '            if (selected) add(selected);' + nl +
-              '            else add(layer->m_player1);' + nl +
+              '            else add(player1);' + nl +
               '        }' + nl +
               '        else {' + nl +
-              '            add(layer->m_player1);' + nl +
-              '            if (dual) add(layer->m_player2);' + nl +
+              '            add(player1);' + nl +
+              '            add(player2);' + nl +
               '        }' + nl +
               '        if (players.empty()) {' + nl +
               '            log::warn("Predictive Input: empty player selection (2P={}, dual={}, inputP1={}, p1={}, p2={})",' + nl +
-              '                twoPlayer, dual, isPlayer1, layer->m_player1 != nullptr, layer->m_player2 != nullptr);' + nl +
+              '                twoPlayer, dual, isPlayer1, player1 != nullptr, player2 != nullptr);' + nl +
               '        }'
           )
           if s.count(old_route) != 1:
