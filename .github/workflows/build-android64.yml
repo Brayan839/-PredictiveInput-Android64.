@@ -37,8 +37,7 @@ jobs:
               "m_collisionLogTop": ("0x5b0", "0x5a8"),
               "m_collisionLogRight": ("0x5c8", "0x5c0"),
               "m_lastCollisionBottom": ("0x5d0", "0x5c8"),
-              "m_unk50C": ("0x5e0", "0x5d8"),
-              "m_yVelocity": ("0x9a8", "0x958"),
+                            "m_yVelocity": ("0x9a8", "0x958"),
               "m_isShip": ("0x9c1", "0x971"),
               "m_isUpsideDown": ("0x9c7", "0x977"),
               "m_isDead": ("0x9c8", "0x978"),
@@ -117,6 +116,13 @@ jobs:
                   found_ring += 1
               elif line.strip() == "dst->m_jumpPadRelated = src->m_jumpPadRelated;":
                   found_pad += 1
+              elif line.strip() in {
+                  "dst->m_stateNoStickX = src->m_stateNoStickX;",
+                  "dst->m_stateNoStickY = src->m_stateNoStickY;",
+                  "dst->m_stateUnk2 = src->m_stateUnk2;",
+              }:
+                  # These legacy fields do not exist in Android 2.2091 bindings.
+                  pass
               else:
                   out.append(line)
           if found_ring != 1 or found_pad != 1:
