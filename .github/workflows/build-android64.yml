@@ -433,48 +433,13 @@ jobs:
           inline constexpr std::array<int, 17> kModeTicks = {
               0, 1, 2, 4, 6, 8, 10, 12, 14, 16, 24, 32, 40, 48, 56, 60, 64
           };'''
-          pattern = r'    inline constexpr std::array<std::string_view, 10> kModeNames = \{.*?    inline constexpr std::array<int, 10> kModeTicks = \{.*?\};'
-          s, count = re.subn(pattern, names, s, count=1, flags=re.S)
-          if count != 1:
-              raise SystemExit('Could not replace 16-tick mode table')
-          p.write_text(s)
-          p = Path('mod.json')
-          d = json.loads(p.read_text())
-          d['settings']['mode']['one-of'] = ['Disabled', '1 Tick', '2 Ticks', '4 Ticks', '6 Ticks', '8 Ticks', '10 Ticks', '12 Ticks', '14 Ticks', '16 Ticks', '24 Ticks', '32 Ticks', '40 Ticks', '48 Ticks', '56 Ticks', '60 Ticks', '64 Ticks']
-          d['settings']['cycle-mode']['description'] = 'Cycles through buffer limits from Disabled up to 64 ticks while playing a level.'
-          d['version'] = 'v1.0.4-beta.2'
-          p.write_text(json.dumps(d, indent=2) + '\n')
-          PY
-
-      - name: Add 3000-tick buffer and always-delay mode
-        working-directory: mod-src
-        shell: bash
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          import json, re
-
-          # Extend the selectable buffer values all the way to 3000 ticks.
-          p = Path("src/Settings.hpp")
-          s = p.read_text()
-          names = [
-              "Disabled", "1 Tick", "2 Ticks", "4 Ticks", "6 Ticks", "8 Ticks",
-              "10 Ticks", "12 Ticks", "14 Ticks", "16 Ticks", "24 Ticks",
-              "32 Ticks", "40 Ticks", "48 Ticks", "56 Ticks", "60 Ticks",
-              "64 Ticks", "128 Ticks", "256 Ticks", "512 Ticks", "1000 Ticks",
-              "1500 Ticks", "2000 Ticks", "2500 Ticks", "3000 Ticks"
-          ]
-          values = [0, 1, 2, 4, 6, 8, 10, 12, 14, 16, 24, 32, 40, 48, 56, 60, 64, 128, 256, 512, 1000, 1500, 2000, 2500, 3000]
-          block = "    inline constexpr std::array<std::string_view, 25> kModeNames = {\n" + "".join(
-              "        " + ", ".join(json.dumps(x) for x in names[i:i+4]) + ("," if i+4 < len(names) else "") + "\n"
-              for i in range(0, len(names), 4)
-          ) + "    };\n    inline constexpr std::array<int, 25> kModeTicks = {\n" + "".join(
-              "        " + ", ".join(str(x) for x in values[i:i+8]) + ("," if i+8 < len(values) else "") + "\n"
-              for i in range(0, len(values), 8)
-          ) + "    };"
-          pattern = r"    inline constexpr std::array<std::string_view, \d+> kModeNames = \{.*?    inline constexpr std::array<int, \d+> kModeTicks = \{.*?\};"
-          s, n = re.subn(pattern, block, s, count=1, flags=re.S)
-          if n != 1: raise SystemExit("Could not replace buffer mode arrays")
+          start = s.find("inline constexpr std::array<std::string_view")
+          middle = s.find("inline constexpr std::array<int", start)
+          end = s.find("};", middle)
+          if start < 0 or middle < 0 or end < 0:
+              raise SystemExit("Could not locate buffer mode arrays")
+          end += 2
+          s = s[:start] + block + s[end:]
           if "bool alwaysDelay" not in s:
               s = s.replace("        bool bufferReleases = true;", "        bool bufferReleases = true;\n        bool alwaysDelay = false;", 1)
           p.write_text(s)
