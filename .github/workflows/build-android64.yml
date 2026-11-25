@@ -394,6 +394,27 @@ jobs:
           meta.write_text(m)
           PY
 
+      - name: Fix relative timing in hold-mode prediction
+        working-directory: mod-src
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("src/Predictor.cpp")
+          s = p.read_text()
+          old_wave = "auto next = std::max(tick + 1, expectedNextInput(mode, down));"
+          new_wave = "auto next = tick + std::max(1, expectedNextInput(mode, down));"
+          if s.count(old_wave) != 1:
+              raise SystemExit("Expected one Wave/Ship/Swing next-input calculation")
+          s = s.replace(old_wave, new_wave, 1)
+          old_ufo = "auto next = std::max(tick + held + 1, expectedNextInput(mode, down));"
+          new_ufo = "auto next = std::max(tick + held + 1, tick + expectedNextInput(mode, down));"
+          if s.count(old_ufo) != 1:
+              raise SystemExit("Expected one UFO next-input calculation")
+          s = s.replace(old_ufo, new_ufo, 1)
+          p.write_text(s)
+          PY
+
       - name: Extend buffer limit to 64 ticks
         working-directory: mod-src
         shell: bash
