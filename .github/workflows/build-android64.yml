@@ -60,6 +60,10 @@ jobs:
               "m_holdingButtons": ("0xbc0", "0xb60"),
               "m_actionManager": ("0xc38", "0xbd8"),
           }
+          stale_member = "PIB_EXPECT_OFFSET(PlayerObject, m_unk50C, 0x5e0);" + chr(10)
+          if s.count(stale_member) != 1:
+              raise SystemExit("Expected outdated m_unk50C assertion exactly once")
+          s = s.replace(stale_member, "// m_unk50C is absent from Android 2.2091 PlayerObject bindings." + chr(10), 1)
           for member, (old, new) in offsets.items():
               old_line = f"PIB_EXPECT_OFFSET(PlayerObject, {member}, {old});"
               new_line = f"PIB_EXPECT_OFFSET(PlayerObject, {member}, {new});"
