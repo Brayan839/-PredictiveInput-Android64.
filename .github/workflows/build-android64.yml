@@ -415,77 +415,51 @@ jobs:
           p.write_text(s)
           PY
 
-      - name: Extend buffer limit to 64 ticks
+      - name: Add 3000-tick buffer and always-delay mode
         working-directory: mod-src
         shell: bash
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          import json, re
+          import json
           p = Path('src/Settings.hpp')
           s = p.read_text()
-          names = '''    inline constexpr std::array<std::string_view, 17> kModeNames = {
-              "Disabled", "1 Tick", "2 Ticks", "4 Ticks", "6 Ticks",
-              "8 Ticks", "10 Ticks", "12 Ticks", "14 Ticks", "16 Ticks",
-              "24 Ticks", "32 Ticks", "40 Ticks", "48 Ticks",
-              "56 Ticks", "60 Ticks", "64 Ticks"
-          };
-          inline constexpr std::array<int, 17> kModeTicks = {
-              0, 1, 2, 4, 6, 8, 10, 12, 14, 16, 24, 32, 40, 48, 56, 60, 64
-          };'''
-          start = s.find("inline constexpr std::array<std::string_view")
-          middle = s.find("inline constexpr std::array<int", start)
-          end = s.find("};", middle)
-          if start < 0 or middle < 0 or end < 0:
-              raise SystemExit("Could not locate buffer mode arrays")
+          names = ['Disabled','1 Tick','2 Ticks','4 Ticks','6 Ticks','8 Ticks','10 Ticks','12 Ticks','14 Ticks','16 Ticks','24 Ticks','32 Ticks','40 Ticks','48 Ticks','56 Ticks','60 Ticks','64 Ticks','128 Ticks','256 Ticks','512 Ticks','1000 Ticks','1500 Ticks','2000 Ticks','2500 Ticks','3000 Ticks']
+          values = [0,1,2,4,6,8,10,12,14,16,24,32,40,48,56,60,64,128,256,512,1000,1500,2000,2500,3000]
+          start = s.find('inline constexpr std::array<std::string_view')
+          middle = s.find('inline constexpr std::array<int', start)
+          end = s.find('};', middle)
+          if start < 0 or middle < 0 or end < 0: raise SystemExit('Could not locate buffer mode arrays')
           end += 2
+          block = 'inline constexpr std::array<std::string_view, 25> kModeNames = {\n' + ''.join('    ' + ', '.join(json.dumps(x) for x in names[i:i+4]) + (',' if i+4 < len(names) else '') + '\n' for i in range(0,25,4)) + '};\ninline constexpr std::array<int, 25> kModeTicks = {\n' + ''.join('    ' + ', '.join(map(str, values[i:i+8])) + (',' if i+8 < len(values) else '') + '\n' for i in range(0,25,8)) + '};'
           s = s[:start] + block + s[end:]
-          if "bool alwaysDelay" not in s:
-              s = s.replace("        bool bufferReleases = true;", "        bool bufferReleases = true;\n        bool alwaysDelay = false;", 1)
+          if 'bool alwaysDelay' not in s:
+              marker = 'bool bufferReleases = true;'
+              if marker not in s: raise SystemExit('Could not locate bufferReleases in Settings.hpp')
+              s = s.replace(marker, marker + '\n        bool alwaysDelay = false;', 1)
           p.write_text(s)
-
-          # Load the new toggle into the live settings.
-          p = Path("src/Settings.cpp")
-          s = p.read_text()
-          if "g_settings.alwaysDelay" not in s:
-              old = '            g_settings.bufferReleases = mod->getSettingValue<bool>("buffer-releases");'
-              if s.count(old) != 1: raise SystemExit("Could not find buffer-releases setting load")
+          p = Path('src/Settings.cpp'); s = p.read_text()
+          if 'g_settings.alwaysDelay' not in s:
+              old = 'g_settings.bufferReleases = mod->getSettingValue<bool>("buffer-releases");'
+              if s.count(old) != 1: raise SystemExit('Could not find buffer-releases setting load')
               s = s.replace(old, old + '\n            g_settings.alwaysDelay = mod->getSettingValue<bool>("always-delay");', 1)
           p.write_text(s)
-
-          # Make 3000 ticks reachable by the simulator's lookahead as well.
-          p = Path("mod.json")
-          d = json.loads(p.read_text())
-          d["settings"]["mode"]["one-of"] = names
-          d["settings"]["mode"]["description"] = "Maximum extra delay in physics ticks (240 per second). Up to 3000 ticks."
-          d["settings"]["cycle-mode"]["description"] = "Cycles through buffer limits from Disabled up to 3000 ticks while playing a level."
-          d["settings"]["jump-horizon"]["max"] = 3000
-          d["settings"]["hold-horizon"]["max"] = 3000
-          d["settings"]["always-delay"] = {
-              "name": "Always Delay Inputs",
-              "description": "When enabled, every gameplay press and release is queued for the selected buffer delay, even when the predictor does not detect danger. This can make controls feel extremely delayed.",
-              "type": "bool",
-              "default": False
-          }
-          d["version"] = "v1.0.5-beta.2"
-          p.write_text(json.dumps(d, indent=2) + "\n")
-
-          # Always-delay mode is deliberately separate from predictive mode:
-          # it queues every input, including releases and inputs with no predicted danger.
-          p = Path("src/Hooks.cpp")
-          s = p.read_text()
-          old = "        if (settings().maxDelay <= 0) return false;"
-          new = "        if (settings().maxDelay <= 0 && !settings().alwaysDelay) return false;"
-          if s.count(old) != 1: raise SystemExit("Could not find shouldIntercept buffer guard")
-          s = s.replace(old, new, 1)
-          old = "        int fireTick = earliest;\n        if (!relevant && !queue.empty()) {"
-          new = "        int fireTick = earliest;\n        if (settings().alwaysDelay) {\n            fireTick = std::max(earliest, std::max(1, settings().maxDelay));\n            lastSave = fmt::format(\"always delayed +{}t {}\", fireTick, down ? \"press\" : \"release\");\n            refreshStatus();\n        }\n        else if (!relevant && !queue.empty()) {"
-          if s.count(old) != 1: raise SystemExit("Could not find fireTick decision block")
-          s = s.replace(old, new, 1)
-          p.write_text(s)
-
-          # Keep the build metadata in sync with the added settings.
-          print("Added 3000-tick options, 3000-tick lookahead limits, and Always Delay Inputs.")
+          p = Path('mod.json'); d = json.loads(p.read_text())
+          d['settings']['mode']['one-of'] = names
+          d['settings']['mode']['description'] = 'Maximum extra delay in physics ticks (240 per second). Up to 3000 ticks.'
+          d['settings']['cycle-mode']['description'] = 'Cycles through buffer limits from Disabled up to 3000 ticks while playing a level.'
+          d['settings']['jump-horizon']['max'] = 3000; d['settings']['hold-horizon']['max'] = 3000
+          d['settings']['always-delay'] = {'name':'Always Delay Inputs','description':'When enabled, every gameplay press and release is queued for the selected buffer delay. This can make controls feel extremely delayed.','type':'bool','default':False}
+          d['version'] = 'v1.0.5-beta.2'; p.write_text(json.dumps(d, indent=2) + '\n')
+          p = Path('src/Hooks.cpp'); s = p.read_text()
+          old = 'if (settings().maxDelay <= 0) return false;'
+          if s.count(old) != 1: raise SystemExit('Could not find shouldIntercept buffer guard')
+          s = s.replace(old, 'if (settings().maxDelay <= 0 && !settings().alwaysDelay) return false;', 1)
+          old = 'int fireTick = earliest;\n        if (!relevant && !queue.empty()) {'
+          if s.count(old) != 1: raise SystemExit('Could not find fireTick decision block')
+          new = 'int fireTick = earliest;\n        if (settings().alwaysDelay) {\n            fireTick = std::max(earliest, std::max(1, settings().maxDelay));\n        }\n        else if (!relevant && !queue.empty()) {'
+          s = s.replace(old, new, 1); p.write_text(s)
+          print('Added 3000-tick options and Always Delay Inputs.')
           PY
 
       - name: Build Geode mod for Android64
