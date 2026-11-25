@@ -390,39 +390,27 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          import json
-
+          import json, re
           p = Path('src/Settings.hpp')
           s = p.read_text()
-          old = '''    inline constexpr std::array<std::string_view, 10> kModeNames = {
-        "Disabled", "1 Tick", "2 Ticks", "4 Ticks", "6 Ticks",
-        "8 Ticks", "10 Ticks", "12 Ticks", "14 Ticks", "16 Ticks"
-    };
-    inline constexpr std::array<int, 10> kModeTicks = { 0, 1, 2, 4, 6, 8, 10, 12, 14, 16 };'''
-          new = '''    inline constexpr std::array<std::string_view, 17> kModeNames = {
-        "Disabled", "1 Tick", "2 Ticks", "4 Ticks", "6 Ticks",
-        "8 Ticks", "10 Ticks", "12 Ticks", "14 Ticks", "16 Ticks",
-        "24 Ticks", "32 Ticks", "40 Ticks", "48 Ticks",
-        "56 Ticks", "60 Ticks", "64 Ticks"
-    };
-    inline constexpr std::array<int, 17> kModeTicks = {
-        0, 1, 2, 4, 6, 8, 10, 12, 14, 16, 24, 32, 40, 48, 56, 60, 64
-    };'''
-          if s.count(old) != 1:
-              raise SystemExit('Expected original 16-tick mode arrays exactly once')
-          p.write_text(s.replace(old, new, 1))
-
+          names = '''    inline constexpr std::array<std::string_view, 17> kModeNames = {
+              "Disabled", "1 Tick", "2 Ticks", "4 Ticks", "6 Ticks",
+              "8 Ticks", "10 Ticks", "12 Ticks", "14 Ticks", "16 Ticks",
+              "24 Ticks", "32 Ticks", "40 Ticks", "48 Ticks",
+              "56 Ticks", "60 Ticks", "64 Ticks"
+          };
+          inline constexpr std::array<int, 17> kModeTicks = {
+              0, 1, 2, 4, 6, 8, 10, 12, 14, 16, 24, 32, 40, 48, 56, 60, 64
+          };'''
+          pattern = r'    inline constexpr std::array<std::string_view, 10> kModeNames = \{.*?    inline constexpr std::array<int, 10> kModeTicks = \{.*?\};'
+          s, count = re.subn(pattern, names, s, count=1, flags=re.S)
+          if count != 1:
+              raise SystemExit('Could not replace 16-tick mode table')
+          p.write_text(s)
           p = Path('mod.json')
           d = json.loads(p.read_text())
-          d['settings']['mode']['one-of'] = [
-              'Disabled', '1 Tick', '2 Ticks', '4 Ticks', '6 Ticks',
-              '8 Ticks', '10 Ticks', '12 Ticks', '14 Ticks', '16 Ticks',
-              '24 Ticks', '32 Ticks', '40 Ticks', '48 Ticks', '56 Ticks',
-              '60 Ticks', '64 Ticks'
-          ]
-          d['settings']['cycle-mode']['description'] = (
-              'Cycles Disabled -> 1 -> 2 -> 4 -> 6 -> 8 -> 10 -> 12 -> 14 -> 16 -> 24 -> 32 -> 40 -> 48 -> 56 -> 60 -> 64 ticks while playing a level.'
-          )
+          d['settings']['mode']['one-of'] = ['Disabled', '1 Tick', '2 Ticks', '4 Ticks', '6 Ticks', '8 Ticks', '10 Ticks', '12 Ticks', '14 Ticks', '16 Ticks', '24 Ticks', '32 Ticks', '40 Ticks', '48 Ticks', '56 Ticks', '60 Ticks', '64 Ticks']
+          d['settings']['cycle-mode']['description'] = 'Cycles through buffer limits from Disabled up to 64 ticks while playing a level.'
           d['version'] = 'v1.0.4-beta.2'
           p.write_text(json.dumps(d, indent=2) + '\n')
           PY
